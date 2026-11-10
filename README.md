@@ -1,5 +1,11 @@
 # WIFIPAY —— 付费 WiFi 认证计费插件
 
+<!-- series-nav -->
+> **自建服务器小工具集** · [nopass](https://github.com/ma304189215-a11y/nopass)（内网服务免密） · [ipv6-push](https://github.com/ma304189215-a11y/ipv6-push)（IPv6 变化推送） · **wifipay**（付费 WiFi 认证）
+>
+> 都在自己家里跑了一段时间、确实在用的东西。零第三方依赖，装完就能用。
+<!-- series-nav -->
+
 OpenWrt 插件形式的**商业 WiFi 认证系统**。设备连上 WiFi 后先跳认证页，试用 / 兑换码 / 套餐 / 付费任选，认证通过才放行上网。
 
 一个包支持三种部署形态，在管理页面切换。
