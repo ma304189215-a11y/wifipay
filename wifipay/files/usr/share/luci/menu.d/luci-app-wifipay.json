@@ -1,0 +1,14 @@
+{
+	"admin/services/wifipay": {
+		"title": "付费 WiFi",
+		"order": 60,
+		"action": { "type": "view", "path": "wifipay/overview" },
+		"depends": { "acl": [ "luci-app-wifipay" ] }
+	},
+	"admin/services/wifipay/deploy": {
+		"title": "部署形态",
+		"order": 20,
+		"action": { "type": "view", "path": "wifipay/deploy" },
+		"depends": { "acl": [ "luci-app-wifipay" ] }
+	}
+}

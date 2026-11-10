@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'">
+<title>联网成功</title>
+<style>
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:#111;color:#fff;font:16px/1.6 -apple-system,"PingFang SC",sans-serif}
+#stage{max-width:560px;width:100%;padding:16px;text-align:center}
+#slot img{width:100%;border-radius:14px;background:#222;display:block}
+#tip{margin-bottom:14px;color:#bbb;font-size:14px}
+.btn{display:inline-block;margin-top:18px;padding:13px 28px;border-radius:999px;
+background:#07c160;color:#fff;text-decoration:none;font-size:16px}
+</style></head>
+<body><div id="stage">
+  <div id="tip"><span id="tiptext">正在开通…</span><a id="skip" href="javascript:void(0)"
+       style="color:#888;font-size:13px;margin-left:10px;display:none">跳过广告</a></div>
+  <div id="slot"></div>
+  <div id="go"></div>
+</div>
+<script>
+var left = 0, timer = null, adId = '';
+
+function clearAll(){ if (timer) { clearTimeout(timer); timer = null; } }
+
+function done(){
+  clearAll();
+  document.getElementById('slot').textContent = '';
+  document.getElementById('skip').style.display = 'none';
+  document.getElementById('tiptext').textContent = '已开通，可以开始上网';
+
+  var go = document.getElementById('go');
+  go.textContent = '';
+  var a = document.createElement('a');
+  a.className = 'btn';
+  a.href = 'http://' + location.hostname + '/';
+  a.textContent = '开始上网';
+  var wrap = document.createElement('div');
+  wrap.style.marginTop = '14px';
+  var sub = document.createElement('a');
+  sub.href = '/wifipay/index.html';
+  sub.style.cssText = 'color:#888;font-size:13px';
+  sub.textContent = '查看剩余时长 / 续费';
+  wrap.appendChild(sub);
+  go.appendChild(a);
+  go.appendChild(wrap);
+}
+
+function tick(){
+  if (left <= 0) { done(); return; }
+  document.getElementById('tiptext').textContent = '广告 ' + left + ' 秒后可继续';
+  left--;
+  timer = setTimeout(tick, 1000);
+}
+
+document.getElementById('skip').onclick = function(){ done(); };
+
+fetch('/cgi-bin/wifipay?act=adsq').then(function(r){ return r.json(); }).then(function(q){
+  if (!q || !q.allow) { done(); return; }
+  return fetch('/wifipay/ads.json').then(function(r){ return r.text(); }).then(function(t){
+    var list = [];
+    try { list = JSON.parse(t) || []; } catch(e) { list = []; }
+    if (!list.length) { done(); return; }
+
+    var ad = list[Math.floor(Math.random() * list.length)];
+    adId = ad.id;
+
+    var a = document.createElement('a');
+    a.href = ad.link || '#';
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    var img = document.createElement('img');
+    img.src = ad.img;
+    img.alt = '';
+    a.appendChild(img);
+    document.getElementById('slot').appendChild(a);
+    a.addEventListener('click', function(){
+      fetch('/cgi-bin/wifipay?act=hit&id=' + encodeURIComponent(adId) + '&type=click');
+    });
+
+    fetch('/cgi-bin/wifipay?act=hit&id=' + encodeURIComponent(adId) + '&type=view');
+
+    left = ad.secs || 8;
+    document.getElementById('skip').style.display = 'inline';
+    tick();
+  });
+}).catch(function(){ done(); });
+</script>
+</body></html>

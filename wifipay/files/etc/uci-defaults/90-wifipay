@@ -1,0 +1,13 @@
+#!/bin/sh
+[ -x /usr/sbin/wifipay ] || exit 0
+if ! uci -q get uhttpd.wifipay >/dev/null 2>&1; then
+	uci set uhttpd.wifipay=uhttpd
+	uci set uhttpd.wifipay.listen_http='0.0.0.0:8088'
+	uci set uhttpd.wifipay.home='/www/wifipay'
+	uci set uhttpd.wifipay.cgi_prefix='/cgi-bin'
+	uci set uhttpd.wifipay.no_dirlists='1'
+	uci set uhttpd.wifipay.error_page='/index.html'
+	uci commit uhttpd
+fi
+/etc/init.d/uhttpd restart >/dev/null 2>&1
+exit 0

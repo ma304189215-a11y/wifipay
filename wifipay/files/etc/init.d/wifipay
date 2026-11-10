@@ -1,0 +1,21 @@
+#!/bin/sh /etc/rc.common
+START=95
+STOP=10
+USE_PROCD=1
+start_service() {
+	. /usr/lib/wifipay/env.sh
+	. /usr/lib/wifipay/net.sh
+	. /usr/lib/wifipay/cfg.sh
+	wp_detect
+	site_publish
+	if [ "$(cfg enabled)" = "1" ]; then net_up; sync_grace; rate_sync; fi
+	procd_open_instance
+	procd_set_param command /bin/sh /usr/lib/wifipay/loop.sh
+	procd_set_param respawn 3600 5 0
+	procd_close_instance
+}
+stop_service() {
+	. /usr/lib/wifipay/net.sh
+	net_down
+	rate_off
+}

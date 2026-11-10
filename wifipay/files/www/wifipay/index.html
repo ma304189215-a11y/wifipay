@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'">
+<meta name="referrer" content="no-referrer">
+<title>WiFi 认证</title>
+<style>
+:root{--c:#07c160;--bg:#f4f5f7;--tx:#1a1a1a}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.6 -apple-system,"PingFang SC",sans-serif;background:var(--bg);color:var(--tx)}
+.wrap{max-width:480px;margin:0 auto;padding:16px 16px 40px}
+.hd{text-align:center;padding:20px 0 12px}
+.hd h1{margin:0;font-size:22px}
+.hd p{margin:6px 0 0;color:#888;font-size:13px}
+.banner{border-radius:14px;overflow:hidden;margin-bottom:14px;line-height:0;display:none}
+.banner img{width:100%;display:block}
+.card{background:#fff;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.st{font-size:15px;padding:12px 16px;border-radius:14px;background:#fff;margin-bottom:14px;display:none;justify-content:space-between}
+.st b{color:var(--c)}
+.plans{display:grid;gap:10px}
+.plan{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border:1px solid #eee;border-radius:12px}
+.plan .p{font-size:19px;color:#e54d42;font-weight:600}
+.plan button,.btn{border:0;border-radius:10px;background:var(--c);color:#fff;padding:9px 16px;font-size:15px}
+.btn{width:100%;padding:13px;font-size:16px}
+.ghost{background:#fff;color:var(--c);border:1px solid var(--c)}
+input{width:100%;padding:12px;font-size:16px;border:1px solid #e3e3e3;border-radius:10px;margin-bottom:10px}
+.muted{color:#999;font-size:12px;text-align:center;margin-top:16px;line-height:1.9}
+.toast{position:fixed;left:50%;bottom:36px;transform:translateX(-50%);background:rgba(0,0,0,.82);color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;opacity:0;transition:.25s;pointer-events:none}
+.toast.on{opacity:1}
+</style></head>
+<body><div class="wrap">
+
+<div class="hd" id="hd">
+  <h1 id="shop">正在加载…</h1>
+  <p id="who">识别设备中</p>
+</div>
+
+<div class="banner" id="bn"><a id="bnlink" target="_blank" rel="noopener noreferrer"><img id="bnimg" alt=""></a></div>
+
+<div class="st" id="stbox"></div>
+
+<div class="card">
+  <div style="font-weight:600;margin-bottom:10px">选择套餐</div>
+  <div class="plans" id="plans"></div>
+</div>
+
+<div class="card" id="trialbox" style="display:none">
+  <div style="font-weight:600;margin-bottom:8px">先试后买</div>
+  <button class="btn ghost" onclick="trial()">免费试用 <span id="tmin">30</span> 分钟</button>
+  <div class="muted" style="text-align:left;margin-top:8px">每台设备每天一次</div>
+</div>
+
+<div class="card">
+  <div style="font-weight:600;margin-bottom:10px">兑换</div>
+  <input id="code" placeholder="兑换码 / 入住码" autocapitalize="characters" autocomplete="off">
+  <button class="btn" onclick="redeem()">提交</button>
+</div>
+
+<div class="muted" id="foot">
+  联网需遵守法律法规，禁止传播违法信息
+  <div id="contact-line"></div>
+  <div id="biz-line" style="display:none"></div>
+</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+var SITE = { warn_minutes: 5 }, MAC = '', CK = '', remainLeft = 0, timer = null;
+
+function T(m){var e=document.getElementById('toast');e.textContent=m;e.classList.add('on');setTimeout(function(){e.classList.remove('on')},2200);}
+function api(q){return fetch('/cgi-bin/wifipay?'+q).then(function(r){return r.json()});}
+function fmt(s){
+  if(!(s>0))return '未开通';
+  var d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),o='';
+  if(d)o+=d+'天'; if(h)o+=h+'小时'; return o+m+'分';
+}
+function fmtShort(s){
+  var m=Math.floor(s/60),x=s%60;
+  return m>0 ? m+' 分 '+x+' 秒' : x+' 秒';
+}
+
+(function(){
+  CK=document.cookie.replace(/(?:(?:^|.*;\s*)wpck\s*=\s*([^;]*).*$)|^.*$/,'$1');
+  if(!CK){
+    CK=Math.random().toString(36).slice(2)+Date.now().toString(36);
+    document.cookie='wpck='+CK+';path=/;max-age=31536000;samesite=lax';
+  }
+})();
+
+function renderStatus(s){
+  var box=document.getElementById('stbox');
+  box.style.display='flex';
+  box.style.background='';
+  clearInterval(timer);
+
+  if(s.state==='grace'){
+    box.style.background='#fff4f4';
+    box.textContent='';
+    var a=document.createElement('span'); a.style.color='#e54d42'; a.textContent='已欠费，速度已限制';
+    var b=document.createElement('b'); b.textContent='续费后恢复';
+    box.appendChild(a); box.appendChild(b);
+    return;
+  }
+  if(s.remain>0){
+    box.textContent='';
+    var t=document.createElement('span'); t.textContent='剩余时长';
+    var v=document.createElement('b'); v.textContent=fmt(s.remain);
+    box.appendChild(t); box.appendChild(v);
+  } else {
+    box.style.display='none';
+    return;
+  }
+
+  var warn=(SITE.warn_minutes||5)*60;
+  if(s.remain>warn) return;
+
+  remainLeft=s.remain;
+  box.style.background='#fff8e6';
+  timer=setInterval(function(){
+    if(remainLeft<=0){
+      clearInterval(timer);
+      box.style.background='#fff4f4';
+      box.textContent='';
+      var x=document.createElement('span'); x.style.color='#e54d42'; x.textContent='已到期';
+      var y=document.createElement('b'); y.textContent='续费后恢复上网';
+      box.appendChild(x); box.appendChild(y);
+      return;
+    }
+    box.textContent='';
+    var p=document.createElement('span'); p.style.color='#d48806'; p.textContent='即将到期';
+    var q=document.createElement('b'); q.textContent='还剩 '+fmtShort(remainLeft);
+    box.appendChild(p); box.appendChild(q);
+    remainLeft--;
+  },1000);
+}
+
+function renderPlans(list){
+  var box=document.getElementById('plans');
+  box.textContent='';
+  if(!list||!list.length){ box.textContent='暂无可购买的套餐'; return; }
+  list.forEach(function(p){
+    var row=document.createElement('div'); row.className='plan';
+    var t=document.createElement('div'); t.textContent=p.title;
+    var right=document.createElement('div'); right.style.cssText='display:flex;align-items:center;gap:12px';
+    var pr=document.createElement('div'); pr.className='p'; pr.textContent='¥'+p.price;
+    var bt=document.createElement('button'); bt.textContent='购买';
+    bt.onclick=function(){ location.href='/wifipay/pay.html?plan='+encodeURIComponent(p.id); };
+    right.appendChild(pr); right.appendChild(bt);
+    row.appendChild(t); row.appendChild(right);
+    box.appendChild(row);
+  });
+}
+
+function loadAd(){
+  api('act=adsq').then(function(q){
+    if(!q||!q.allow) return;
+    return fetch('/wifipay/ads.json').then(function(r){return r.text()}).then(function(t){
+      var list=[];
+      try{ list=JSON.parse(t)||[]; }catch(e){ return; }
+      if(!list.length) return;
+      var a=list[Math.floor(Math.random()*list.length)];
+      document.getElementById('bnimg').src=a.img;
+      document.getElementById('bnlink').href=a.link||'#';
+      document.getElementById('bn').style.display='block';
+      document.getElementById('bnimg').onclick=function(){
+        api('act=hit&id='+encodeURIComponent(a.id)+'&type=click');
+      };
+      api('act=hit&id='+encodeURIComponent(a.id)+'&type=view');
+    });
+  }).catch(function(){});
+}
+
+function trial(){
+  if(!MAC){ T('识别不到设备，请重连 WiFi'); return; }
+  api('act=trial&ck='+encodeURIComponent(CK)).then(function(d){
+    if(d.ok){ T('试用已开通'); setTimeout(function(){location.href='/wifipay/ok.html';},700); }
+    else T(d.msg||'开通失败');
+  });
+}
+
+function redeem(){
+  var c=document.getElementById('code').value.trim().toUpperCase();
+  if(!c){ T('请输入兑换码或入住码'); return; }
+  api('act=redeem&code='+encodeURIComponent(c)).then(function(d){
+    if(d.ok){ location.href='/wifipay/ok.html'; return; }
+    return api('act=bind&code='+encodeURIComponent(c)).then(function(b){
+      if(b.ok) location.href='/wifipay/ok.html';
+      else T(b.msg||d.msg||'码无效');
+    });
+  }).catch(function(){ T('请求失败，请稍后再试'); });
+}
+
+fetch('/wifipay/site.json').then(function(r){return r.json()}).then(function(s){
+  SITE=s||SITE;
+  if(SITE.title) document.getElementById('shop').textContent=SITE.title;
+  if(SITE.logo){
+    var img=document.createElement('img');
+    img.src=SITE.logo; img.alt='';
+    img.style.cssText='max-height:56px;margin-bottom:10px';
+    var hd=document.getElementById('hd');
+    hd.insertBefore(img,hd.firstChild);
+  }
+  if(SITE.contact) document.getElementById('contact-line').textContent='客服：'+SITE.contact;
+  if(SITE.biz_name){
+    var b=document.getElementById('biz-line');
+    b.style.display='block';
+    b.textContent='经营者：'+SITE.biz_name+(SITE.biz_code?'　统一社会信用代码：'+SITE.biz_code:'');
+  }
+  if(SITE.trial){
+    document.getElementById('tmin').textContent=SITE.trial_minutes||30;
+    document.getElementById('trialbox').style.display='block';
+  }
+}).catch(function(){}).then(function(){
+  return api('act=whoami');
+}).then(function(d){
+  MAC=d.mac||'';
+  document.getElementById('who').textContent = MAC ? ('设备 '+MAC) : '识别不到设备，请重新连接 WiFi';
+  if(!MAC) return;
+  return api('act=status').then(function(s){ renderStatus(s); });
+}).catch(function(){});
+
+api('act=plans').then(function(l){ renderPlans(l); }).catch(function(){});
+loadAd();
+</script>
+</body></html>

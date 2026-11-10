@@ -1,0 +1,18 @@
+{
+	"luci-app-wifipay": {
+		"description": "付费 WiFi 管理",
+		"read": {
+			"ubus": { "file": [ "exec" ] },
+			"file": {
+				"exec": { "/usr/sbin/wifipay": true }
+			}
+		},
+		"write": {
+			"ubus": { "file": [ "exec" ] },
+			"file": {
+				"exec": { "/usr/sbin/wifipay": true },
+				"write": { "/tmp/wifipay-upload.b64": [ "write" ] }
+			}
+		}
+	}
+}

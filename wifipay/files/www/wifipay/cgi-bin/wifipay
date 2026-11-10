@@ -1,0 +1,63 @@
+#!/bin/sh
+. /usr/lib/wifipay/env.sh
+. /usr/lib/wifipay/sec.sh
+
+j()    { printf 'Content-Type: application/json; charset=utf-8\nCache-Control: no-store\nX-Content-Type-Options: nosniff\n\n'; }
+deny() { printf 'Status: %s\nContent-Type: application/json\n\n{"ok":false}\n' "$1"; exit 0; }
+
+rip=${REMOTE_ADDR:-}
+sec_ip "$rip" || deny 403
+sec_in_net "$rip" "$(cfg guest_net)" || deny 403
+
+mg=$(cfg lan_net); gn=$(cfg guest_net)
+if [ -n "$mg" ] && [ "$mg" != "$gn" ] && sec_in_net "$rip" "$mg"; then
+	deny 403
+fi
+
+sec_banned "$rip" && deny 403
+sec_day "$rip" || deny 403
+
+Q=${QUERY_STRING:-}
+[ "${#Q}" -le 512 ] || deny 414
+
+act=$(printf '%s' "$Q" | sed -n 's/.*act=\([a-zA-Z-]*\).*/\1/p')
+sec_act "$act" || deny 400
+sec_rate_act "$rip" "$act" || deny 429
+
+code=$(printf '%s' "$Q" | sed -n 's/.*code=\([A-Za-z0-9-]*\).*/\1/p')
+aid=$(printf '%s' "$Q"  | sed -n 's/.*id=\([a-z0-9]*\).*/\1/p')
+atype=$(printf '%s' "$Q" | sed -n 's/.*type=\([a-z]*\).*/\1/p')
+oid=$(printf '%s' "$Q"  | sed -n 's/.*order=\([A-Za-z0-9]*\).*/\1/p')
+plan=$(printf '%s' "$Q" | sed -n 's/.*plan=\([a-z0-9]*\).*/\1/p')
+ck=$(printf '%s' "${HTTP_COOKIE:-}" | sed -n 's/.*wpck=\([a-zA-Z0-9]\{6,40\}\).*/\1/p')
+
+mac=$(awk -v ip="$rip" '$3==ip{print $2; exit}' /tmp/dhcp.leases 2>/dev/null)
+sec_mac "$mac" || mac=""
+
+j
+case "$act" in
+	whoami) printf '{"mac":"%s","ip":"%s"}\n' "$mac" "$rip" ;;
+	status) /usr/sbin/wifipay status "$mac" ;;
+	plans)  /usr/sbin/wifipay plans ;;
+	ads)    cat /www/wifipay/ads.json 2>/dev/null || echo '[]' ;;
+	adsq)   /usr/sbin/wifipay ads quota "$mac" ;;
+	trial)  /usr/sbin/wifipay trial "$mac" "$rip" "$ck" ;;
+	redeem)
+		sec_code "$code" || { echo '{"ok":false,"msg":"兑换码格式不对"}'; exit 0; }
+		/usr/sbin/wifipay redeem "$code" "$mac"
+		;;
+	bind)
+		sec_rcode "$code" || { echo '{"ok":false,"msg":"入住码格式不对"}'; exit 0; }
+		/usr/sbin/wifipay rooms bind "$code" "$mac"
+		;;
+	hit)
+		sec_id "$aid" || { echo '{"ok":false}'; exit 0; }
+		case "$atype" in view|click) ;; *) echo '{"ok":false}'; exit 0 ;; esac
+		/usr/sbin/wifipay ads hit "$aid" "$atype" "$mac" >/dev/null 2>&1
+		echo '{"ok":true}'
+		;;
+	order) /usr/sbin/wifipay order "$plan" "$mac" "$rip" ;;
+	claim) /usr/sbin/wifipay claim "$oid" ;;
+	orderstatus) /usr/sbin/wifipay poll "$oid" ;;
+	*) echo '{"ok":false}' ;;
+esac

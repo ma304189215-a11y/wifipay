@@ -1,0 +1,77 @@
+#!/bin/sh
+. /usr/lib/wifipay/env.sh
+. /usr/lib/wifipay/net.sh
+
+C=$1; [ -n "$C" ] && shift
+
+case "$C" in
+	start)        net_up && sync_grace && rate_sync ;;
+	stop)         net_down; rate_off ;;
+	sync)         sync_allowed; sync_trusted; sync_grace ;;
+	doctor)       . /usr/lib/wifipay/doctor.sh; do_doctor ;;
+	selftest)     . /usr/lib/wifipay/selftest.sh; do_selftest ;;
+	verify)       . /usr/lib/wifipay/selftest.sh; do_verify ;;
+	manifest)     . /usr/lib/wifipay/selftest.sh; do_manifest ;;
+	trust)        trust_add "$1" ;;
+	untrust)      trust_del "$1" ;;
+	trust-online) trust_online ;;
+	panic)        panic_on "${1:-10}" ;;
+	unpanic)      panic_off ;;
+
+	settings)     . /usr/lib/wifipay/cfg.sh; settings_all ;;
+	set)          . /usr/lib/wifipay/cfg.sh; cfg_set "$1" "$2" ;;
+	site)         . /usr/lib/wifipay/cfg.sh; site_publish ;;
+
+	plans)        . /usr/lib/wifipay/plan.sh; plans_json ;;
+	status)       . /usr/lib/wifipay/plan.sh; plan_status "$1" ;;
+	allow)        . /usr/lib/wifipay/plan.sh; plan_allow "$1" "$2" "${3:-}" ;;
+	revoke)       . /usr/lib/wifipay/plan.sh; plan_revoke "$1" ;;
+	allowed)      . /usr/lib/wifipay/plan.sh; allowed_list ;;
+	trial)        . /usr/lib/wifipay/plan.sh; plan_trial "$1" "$2" "$3" ;;
+	redeem)       . /usr/lib/wifipay/plan.sh; plan_redeem "$1" "$2" ;;
+	codes)
+		. /usr/lib/wifipay/plan.sh
+		case "$1" in
+			add)    codes_add "$2" "$3" ;;
+			list)   codes_list ;;
+			export) codes_export ;;
+		esac ;;
+
+	ads)          . /usr/lib/wifipay/ad.sh; ads_cmd "$@" ;;
+
+	order)        . /usr/lib/wifipay/pay.sh; order_create "$1" "$2" "$3" ;;
+	claim)        . /usr/lib/wifipay/pay.sh; order_claim "$1" ;;
+	poll)         . /usr/lib/wifipay/pay.sh; order_poll "$1" ;;
+	confirm)      . /usr/lib/wifipay/pay.sh; order_confirm "$1" ;;
+	order-revoke) . /usr/lib/wifipay/pay.sh; order_revoke "$1" ;;
+	orders)       . /usr/lib/wifipay/pay.sh; order_list ;;
+	stats)        . /usr/lib/wifipay/pay.sh; order_stats ;;
+
+	rooms)        . /usr/lib/wifipay/room.sh; rooms_cmd "$@" ;;
+	biz)          . /usr/lib/wifipay/biz.sh; biz_cmd "$@" ;;
+
+	*)
+		cat <<-EOF
+		wifipay <命令>
+		  start / stop          启用 / 撤销拦截
+		  sync                  同步状态到 nft
+		  doctor                体检
+		  selftest / verify     自检 / 校验文件完整性
+		  manifest              重建完整性清单
+		  trust <mac>           加永久白名单
+		  trust-online          当前在线设备全部加白
+		  panic [分钟]          全放行（默认 10 分钟）
+		  unpanic               解除
+		  settings / set        读配置 / 改配置
+		  plans / status        套餐 / 剩余时长
+		  allow / revoke        放行 / 踢掉
+		  allowed               已开通设备
+		  trial / redeem        试用 / 兑换
+		  codes add|list|export 兑换码
+		  ads list|add|del|...  商品广告
+		  order|claim|poll|confirm|order-revoke|orders|stats   订单
+		  rooms list|add|bind|renew|...                        房间
+		  biz get|set|audit                                    资质
+		EOF
+		;;
+esac

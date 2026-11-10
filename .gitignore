@@ -1,0 +1,7 @@
+# 运行时数据
+*.log
+*.pem
+__pycache__/
+*.pyc
+# 微信支付私钥
+**/apiclient_key.pem

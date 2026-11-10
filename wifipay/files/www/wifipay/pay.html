@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'">
+<title>购买时长</title>
+<style>
+body{margin:0;font:16px/1.6 -apple-system,"PingFang SC",sans-serif;background:#f4f5f7;color:#1a1a1a}
+.wrap{max-width:480px;margin:0 auto;padding:16px}
+.card{background:#fff;border-radius:14px;padding:18px;margin-bottom:14px}
+.k{color:#888;font-size:13px}
+.price{font-size:34px;color:#e54d42;font-weight:600;text-align:center}
+.qr{text-align:center;margin:16px 0}
+.qr img{width:240px;max-width:80%;border-radius:10px;background:#fafafa}
+.btn{width:100%;padding:13px;border:0;border-radius:10px;background:#07c160;color:#fff;font-size:16px}
+.muted{color:#999;font-size:12px;text-align:center;margin-top:14px;line-height:1.8}
+code{background:#f5f5f5;padding:2px 6px;border-radius:4px;font-size:13px}
+</style></head>
+<body><div class="wrap">
+
+<div class="card">
+  <div class="k" style="text-align:center">应付金额</div>
+  <div class="price" id="price">¥—</div>
+  <div class="k" id="planName" style="text-align:center;margin-top:6px"></div>
+</div>
+
+<div class="card">
+  <div class="qr"><img id="qr" alt=""></div>
+  <div class="k" style="text-align:center">订单号 <code id="oid">—</code></div>
+  <div style="margin-top:14px"><button id="btn" class="btn" disabled>正在下单…</button></div>
+  <div class="muted" id="hint"></div>
+</div>
+
+</div>
+<script>
+var P = new URLSearchParams(location.search);
+var plan = P.get('plan') || '';
+var oid = '', polling = null;
+
+function api(q){ return fetch('/cgi-bin/wifipay?' + q).then(function(r){ return r.json(); }); }
+function txt(id, s){ document.getElementById(id).textContent = s; }
+
+api('act=plans').then(function(list){
+  var p = (list || []).filter(function(x){ return x.id === plan; })[0];
+  if (!p) { txt('price', '套餐不存在'); txt('hint', '请返回上一页重新选择'); return; }
+
+  txt('price', '¥' + p.price);
+  txt('planName', p.title);
+
+  return api('act=order&plan=' + encodeURIComponent(plan)).then(function(d){
+    if (!d || !d.ok) {
+      txt('hint', (d && d.msg) || '下单失败');
+      return;
+    }
+    oid = d.order;
+    txt('oid', oid);
+
+    if (d.qr) {
+      document.getElementById('qr').src = d.qr;
+      document.getElementById('qr').style.display = 'block';
+    } else {
+      document.getElementById('qr').style.display = 'none';
+      txt('hint', '请向店主索取收款码，付款后点下方按钮');
+    }
+
+    var btn = document.getElementById('btn');
+    btn.disabled = false;
+
+    if (d.mode === 'wxpay') {
+      btn.textContent = '重新查询支付结果';
+      btn.onclick = function(){ check(); };
+      txt('hint', '扫码支付后会自动开通，请勿关闭页面');
+      startPoll();
+    } else {
+      btn.textContent = '我已付款';
+      btn.onclick = function(){
+        btn.disabled = true;
+        api('act=claim&order=' + encodeURIComponent(oid)).then(function(x){
+          txt('hint', (x && x.msg) || '已提交，等待店主确认');
+          btn.textContent = '已提交';
+        });
+      };
+      txt('hint', '付款后点上方按钮，店主确认后自动开通');
+    }
+  });
+}).catch(function(){ txt('hint', '加载失败，请刷新重试'); });
+
+function check(){
+  if (!oid) return;
+  api('act=orderstatus&order=' + encodeURIComponent(oid)).then(function(d){
+    if (!d) return;
+    if (d.state === 'granted') {
+      stopPoll();
+      location.href = '/wifipay/ok.html';
+    } else if (d.state === 'amount_mismatch') {
+      stopPoll();
+      txt('hint', '金额异常，请联系店主');
+    } else {
+      txt('hint', '尚未收到支付，状态：' + (d.state || '未知'));
+    }
+  }).catch(function(){});
+}
+
+function startPoll(){
+  if (polling) return;
+  polling = setInterval(check, 3000);
+  setTimeout(stopPoll, 300000);
+}
+
+function stopPoll(){
+  if (polling) { clearInterval(polling); polling = null; }
+}
+</script>
+</body></html>
